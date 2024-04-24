@@ -1,0 +1,142 @@
+---
+title: "Stats 101A, Project"
+author: "Shabib Alam -- 106038360"
+date: "`r format(Sys.Date(), '%D')`"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+    code_folding: show
+---
+# Problem Description
+Currently Rental bikes are introduced in many urban cities for the enhancement of mobility comfort. It is important to make the rental bike available and accessible to the public at the right time as it lessens the waiting time. Eventually, providing the city with a stable supply of rental bikes becomes a major concern. The crucial part is the prediction of bike count required at each hour for the stable supply of rental bikes.
+
+# Data Description
+The dataset contains weather information (Temperature, Humidity, Windspeed, Visibility, Dewpoint, Solar radiation, Snowfall, Rainfall), the number of bikes rented per hour, Seasons, Holiday and Functioning.Day information.\textbf{Loading the data from SeouBikeData.csv dataset, and get the details}
+
+```{r, include=FALSE}
+library(tidyverse)
+library(MASS)
+library(car)
+```
+
+```{r, echo=FALSE}
+seoul_bike <- read.csv("SeoulBikeData.csv", fileEncoding = "latin1")
+seoul_bike <- subset(seoul_bike, select = -Date)
+summary(seoul_bike)
+```
+
+```{r,include=FALSE}
+lm_model <- lm(Rented.Bike.Count ~ Hour+Temperature..C.+Humidity...+Wind.speed..m.s.+Visibility..10m.+Dew.point.temperature..C.+Solar.Radiation..MJ.m2.+Rainfall.mm.+Snowfall..cm.+Holiday+Functioning.Day+Seasons, data = seoul_bike)
+summary(lm_model)
+```
+# Data Cleaning
+
+## Removing \textbf{Date} Variable from dataset
+
+In my analysis, \textbf{does not require information about the specific dates} but rather focuses on other variables such as "Hour", "Temperature_C", "Humidity", "Wind_speed_m_s", "Visibility_10m", "Dew_point_temperature_C", "Solar_Radiation_MJ_m2", "Rainfall_mm", "Snowfall_cm", "Seasons", "Holiday", and "Functioning_Day".
+So, I have data without data.After that I need to check others stuff to see for data cleaning.
+
+## Finding NA, infinite, duplicate value
+There are \textbf{no missing values} in any of the columns of the seoul_bike_clean dataset.There are \textbf{no duplicate values} in the seoul_bike_clean dataset. Most of numeric columns (Rented.Bike.Count, Hour, Temperature..C., Humidity..., Wind.speed..m.s., Visibility..10m., Dew.point.temperature..C., and Solar.Radiation..MJ.m2.,Rainfall.mm.) have finite values, indicating but there are some \textbf{infinite values} present in these columns such as , \textbf{Snowfall..cm., Seasons,  Holiday, Functioning.Day}.
+
+## Convert infiinite value into finite value
+By using as.factor function, I converted nonfinite value into finite value from \textbf{Snowfall..cm., Seasons,  Holiday, Functioning.Day}. Now overall, it seems that the seoul_bike_clean dataset is free from missing values, duplicates, and infinite values in the numeric columns, which is good for further analysis or modeling.
+
+```{r,include=FALSE}
+seoul_bike$Holiday <- as.factor(seoul_bike$Holiday)
+finite_Holiday <- all(is.finite(seoul_bike$Holiday))
+if (finite_Holiday){
+  print("All values in Holiday are finite")
+} else {
+  print(
+        "False means there are non-finite values in Holiday")}
+
+seoul_bike$Functioning.Day <- as.factor(seoul_bike$Functioning.Day)
+finite_Functioning.Day <- all(is.finite(seoul_bike$Functioning.Day))
+if (finite_Functioning.Day){
+  print("All values in Functioning.Day are finite")
+} else {
+  print(
+        "False means there are non-finite values in Functioning.Day")}
+
+seoul_bike$Seasons <- as.factor(seoul_bike$Seasons)
+finite_Seasons <- all(is.finite(seoul_bike$Seasons))
+if (finite_Seasons){
+  print("All values in Seasons are finite")
+} else {
+  print(
+        "False means there are non-finite values in Seasons")}
+```
+
+# Multicolinearity Test
+
+```{r, echo=FALSE}
+vif(lm_model)
+```
+High GVIF values, such as those observed for Temperature..C. and Dew.point.temperature..C., suggest potential multicollinearity issues that may require further investigation or remediation techniques, such as variable  \text{transformation or stepwise function} . Conversely, variables with low GVIF values are less affected by multicollinearity concerns and can be considered reliable predictors in the regression model.
+
+# Stepwise Regression 
+## Before Stepwise
+I conducted stepwise regression to streamline the model by eliminating non-essential variables. The goal was to enhance model efficiency and interpretability by focusing on the most influential predictors. 
+```{r}
+backward_model <- step(lm_model, direction = "backward")
+summary(backward_model)
+```
+## After Stepwise
+The stepwise regression procedure helped refine the model by eliminating the least significant predictor, Visibility..10m., while retaining other relevant variables. This streamlined model can provide more accurate predictions of rented bike counts based on the remaining predictors.
+
+# Transformation
+## Box Cox Transformation
+The Box-Cox transformation is a technique used to stabilize the variance and improve the normality of the residuals in linear regression models. By applying this transformation to the response variable, we aim to address issues such as  non-normality in the model's residuals, and make model better.
+
+```{r, echo=FALSE}
+seoul_bike$Rented.Bike.Count <- seoul_bike$Rented.Bike.Count +1
+
+# Find optimal lambda value using Box-Cox transformation
+boxcox_results <- boxcox(lm_model)
+
+# Extract optimal lambda value
+optimal_lambda <- boxcox_results$x[which.max(boxcox_results$y)]
+
+# Apply Box-Cox transformation to Rented.Bike.Count variable
+seoul_bike$Rented.Bike.Count_transformed <- ((seoul_bike$Rented.Bike.Count ^ optimal_lambda) - 1) / optimal_lambda
+
+# Fit model with transformed response variable
+transformed_model <- lm(Rented.Bike.Count_transformed ~ Hour + Temperature..C. + Humidity... + 
+                           Wind.speed..m.s.  + Dew.point.temperature..C. + 
+                           Solar.Radiation..MJ.m2. + Rainfall.mm. + Snowfall..cm. + 
+                           Holiday + Functioning.Day+Seasons, 
+                         data = seoul_bike)
+summary(transformed_model)
+```
+```{r,echo=FALSE}
+lm_mode_final <- lm(Rented.Bike.Count ~ Hour+Humidity...+Visibility..10m.+Dew.point.temperature..C.+Rainfall.mm.+Holiday+Functioning.Day+Seasons, data = seoul_bike)
+summary(lm_mode_final)
+```
+Since p value is lower of Temperature, windspeed, and snowfall, I remove those variable to make my model more effective.
+
+# Diagnostic Plot
+The diagnostic plot displays four diagnostic plots: \textbf{Residuals vs Fitted, Normal Q-Q plot, Scale-Location plot, and Residuals vs Leverage}. These plots are used to assess the assumptions of linear regression.This is also better than before that tell us that model became better after doing transformation.
+
+```{r, echo=FALSE}
+par(mfrow=c(2,2))
+plot(transformed_model)
+```
+
+# Conclusion
+In this analysis, a linear regression model was initially built using the variables Hour, Temperature..C., Humidity..., Wind.speed..m.s., Visibility..10m., Dew.point.temperature..C., Solar.Radiation..MJ.m2., Rainfall.mm., Snowfall..cm., Holiday, Functioning.Day, and Seasons to predict the Rented.Bike.Count in Seoul. The model's diagnostics revealed issues of \textbf{multicollinearity}, especially with Temperature..C., Dew.point.temperature..C., and Seasons showing high Variance Inflation Factors (VIFs). Subsequently, a \textbf{backward stepwise} regression was performed to address multicollinearity, resulting in the \textbf{removal of the Visibility..10m.} variable. Then, a \textbf{Box-Cox transformation} was applied to the response variable Rented.Bike.Count to address heteroscedasticity and non-normality in the residuals. The transformed model demonstrated an\textbf{improvement in the adjusted R-squared value from 0.5497 to 0.7253, indicating a better fit} to the data. Since p value is lower of Temperature, windspeed, and snowfall, I remove those variable to make my model more effective. Additionally, diagnostic plots showed improved linearity, homoscedasticity, and normality assumptions in the transformed model compared to the original model. Overall, these steps helped in \textbf{refining the model's performance and addressing issues} related to multicollinearity and non-normality in the data.
+
+
+
+
+
+
+
+
+
+
